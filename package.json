@@ -1,0 +1,10 @@
+{
+  "name": "maths-table",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    // your packages here
+  }
+}
