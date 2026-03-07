@@ -1,37 +1,51 @@
-name: Deploy UI to GitHub Pages
+name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: [ main ]   # or your default branch
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  pages: write       # REQUIRED for Pages deploy
+  id-token: write    # REQUIRED for OIDC during deploy
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # (Optional) Build your site here, then put output into ./dist
+      # - name: Build
+      #   run: |
+      #     npm ci
+      #     npm run build
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # This line tells the action to enable Pages if the site doesn't exist yet
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "."
+          # Path to the static output folder (change if you build into another dir)
+          path: ./public
 
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
