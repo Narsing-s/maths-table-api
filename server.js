@@ -27,7 +27,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
-/* ---------- Inline UI (Android-like) ---------- */
+/* ---------- Inline UI (Android-like, without JSON preview) ---------- */
 const UI_HTML = `<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
@@ -91,7 +91,7 @@ const UI_HTML = `<!doctype html>
     .field label{font-size:12px; color:var(--muted)}
     .value{font-size:20px; min-height:26px; letter-spacing:.2px}
 
-    .request-box, .result-box{
+    .result-box{
       border:1px dashed rgba(255,255,255,.16); background:rgba(255,255,255,.04);
       border-radius:var(--radius-sm); padding:12px; font-family:var(--mono); white-space:pre-wrap; word-break:break-word
     }
@@ -181,8 +181,6 @@ const UI_HTML = `<!doctype html>
             </div>
           </div>
 
-          <div class="request-box" id="reqJson">Request body will appear here.</div>
-
           <div class="actions">
             <button class="btn primary" id="computeBtn">Compute</button>
             <button class="btn" id="copyBtn">Copy Result</button>
@@ -207,7 +205,8 @@ const UI_HTML = `<!doctype html>
             <div class="key">7</div><div class="key">8</div><div class="key">9</div>
             <div class="key">4</div><div class="key">5</div><div class="key">6</div>
             <div class="key">1</div><div class="key">2</div><div class="key">3</div>
-            <div class="key">0</div><div class="key">.</div><div class="key muted" data-act="back">⌫</div>
+            <div class="key">0</div><div class="key">.</div><div class="key">-</div>
+            <div class="key muted" data-act="back">⌫</div>
             <div class="key muted wide" data-act="clear">Clear</div>
             <div class="key accent wide" data-act="compute">Compute</div>
           </div>
@@ -280,18 +279,18 @@ const UI_HTML = `<!doctype html>
   </nav>
 
   <script>
-    const $ = function(id){ return document.getElementById(id); };
+    var $ = function(id){ return document.getElementById(id); };
     $("year").textContent = new Date().getFullYear();
 
     /* =========================
        Theme
     ========================== */
-    const THEME_KEY = "maths-ui-theme";
-    const savedTheme = localStorage.getItem(THEME_KEY);
+    var THEME_KEY = "maths-ui-theme";
+    var savedTheme = localStorage.getItem(THEME_KEY);
     if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
     $("theme").checked = (document.documentElement.getAttribute("data-theme") === "light");
     $("theme").addEventListener("change", function(){
-      const mode = $("theme").checked ? "light" : "dark";
+      var mode = $("theme").checked ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", mode);
       localStorage.setItem(THEME_KEY, mode);
     });
@@ -299,11 +298,11 @@ const UI_HTML = `<!doctype html>
     /* =========================
        Settings
     ========================== */
-    const BASE_KEY = "maths-ui-base";
-    const HIST_KEY = "maths-ui-history";
-    const HAPTICS_KEY = "maths-ui-haptics";
-    const SOUND_KEY   = "maths-ui-sound";
-    const INFINITE_KEY= "maths-ui-infinite";
+    var BASE_KEY = "maths-ui-base";
+    var HIST_KEY = "maths-ui-history";
+    var HAPTICS_KEY = "maths-ui-haptics";
+    var SOUND_KEY   = "maths-ui-sound";
+    var INFINITE_KEY= "maths-ui-infinite";
 
     function normBase(b){ b=(b||"").trim().replace(/\\s+/g,""); b=b.replace(/\\/+$/,""); return b || "/api"; }
 
@@ -318,7 +317,6 @@ const UI_HTML = `<!doctype html>
       localStorage.setItem(BASE_KEY, base);
       $("baseVal").textContent = base;
       alert("Settings saved");
-      buildRequest();
       updateComputeButtonLabel();
     };
     $("resetSettings").onclick = function(){
@@ -328,7 +326,6 @@ const UI_HTML = `<!doctype html>
       $("baseInput").value = base;
       $("baseVal").textContent = base;
       alert("Settings reset");
-      buildRequest();
       updateComputeButtonLabel();
     };
 
@@ -499,7 +496,7 @@ const UI_HTML = `<!doctype html>
       if (act === "back") backspace();
       else if (act === "clear") clearActive();
       else if (act === "compute") $("computeBtn").click();
-      else if (/^[0-9.]$/.test(label)) append(label);
+      else if (/^[0-9.\\-]$/.test(label)) append(label);
     });
 
     function getVal(id){ return $(id).textContent.trim(); }
@@ -507,19 +504,27 @@ const UI_HTML = `<!doctype html>
 
     function append(ch){
       var cur = getVal(active);
-      if (active !== "num" && ch === "." ) return; // str/end integers only
-      if (ch === "." && cur.indexOf(".") !== -1) return;
+
+      // minus only at first position and only once
+      if (ch === "-") {
+        if (cur.startsWith("-")) return;
+        if (cur.length === 0) {
+          setVal(active, "-");
+          return;
+        }
+        return;
+      }
+
+      if (active !== "num" && ch === ".") return; // str/end integers only
+      if (ch === "." && cur.indexOf(".") !== -1) return; // only one dot in num
       setVal(active, cur + ch);
-      buildRequest();
     }
     function backspace(){
       var cur = getVal(active);
       setVal(active, cur.slice(0,-1));
-      buildRequest();
     }
     function clearActive(){
       setVal(active, "");
-      buildRequest();
     }
 
     $("clearBtn").onclick = function(){
@@ -527,20 +532,10 @@ const UI_HTML = `<!doctype html>
       setVal("num","");
       setVal("str","");
       setVal("end","");
-      buildRequest();
     };
 
-    /* =========================
-       Build request JSON preview
-    ========================== */
-    function buildRequest(){
-      var body = { num: getVal("num"), str: getVal("str"), end: getVal("end") };
-      $("reqJson").textContent = JSON.stringify(body, null, 2);
-      return body;
-    }
-    // No default chips; leave fields to user. Set helpful defaults if blank:
+    // Helpful default for start
     if (!$("str").textContent) $("str").textContent = "1";
-    buildRequest();
     updateComputeButtonLabel();
 
     /* =========================
@@ -571,9 +566,10 @@ const UI_HTML = `<!doctype html>
 
     async function computeFinite(){
       try{
-        var body = buildRequest();
-        var N = Number(body.num), S = Number(body.str), E = Number(body.end);
-        if ([body.num, body.str, body.end].some(function(v){ return v==="" || v==null; })) {
+        var nVal = getVal("num"), sVal = getVal("str"), eVal = getVal("end");
+        var N = Number(nVal), S = Number(sVal), E = Number(eVal);
+
+        if ([nVal, sVal, eVal].some(function(v){ return v==="" || v==null; })) {
           return showError("Please fill Number, Start and End.");
         }
         if ([N,S,E].some(function(v){ return isNaN(v) || !isFinite(v); })){
@@ -671,7 +667,7 @@ const UI_HTML = `<!doctype html>
         row.querySelector("[data-act='rerun']").onclick = function(){
           feedback();
           setVal("num", String(h.num)); setVal("str", String(h.str)); setVal("end", String(h.end || ""));
-          setScreen("table"); buildRequest(); $("computeBtn").click();
+          setScreen("table"); $("computeBtn").click();
         };
         list.appendChild(row);
       });
