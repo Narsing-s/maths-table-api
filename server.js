@@ -126,6 +126,7 @@ const UI_HTML = `<!doctype html>
     /* Settings */
     .form-row{display:grid; gap:8px; margin-bottom:12px}
     .input{width:100%; padding:12px 14px; border-radius:10px; color:var(--text); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); outline:none}
+    .form-row label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
 
     /* Bottom watermark */
     .watermark{
@@ -135,6 +136,17 @@ const UI_HTML = `<!doctype html>
       text-decoration:none
     }
     .watermark:hover{text-decoration:underline}
+
+    /* Bottom nav */
+    .bottom-nav{
+      position:fixed; left:0; right:0; bottom:0; height:var(--nav-h);
+      background:rgba(10,14,30,.85); border-top:1px solid rgba(255,255,255,.08); backdrop-filter:blur(8px);
+      display:flex; align-items:center; justify-content:space-around; z-index:10
+    }
+    .nav-item{display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--muted); text-decoration:none; padding:8px 12px; border-radius:12px; min-width:88px}
+    .nav-item.active{color:var(--text); background:rgba(255,255,255,.06)}
+    .nav-ico{font-size:20px; line-height:1}
+    .nav-label{font-size:12px}
   </style>
 </head>
 <body>
@@ -236,6 +248,15 @@ const UI_HTML = `<!doctype html>
           <label for="muleInput">Mule Table URL (server forwards here)</label>
           <input id="muleInput" class="input" type="text" />
         </div>
+        <!-- Haptics & Sound Toggles -->
+        <div class="form-row">
+          <label><input id="hapticsToggle" type="checkbox" /> Enable haptic feedback</label>
+          <small style="color: var(--muted)">Short vibration on taps (if supported).</small>
+        </div>
+        <div class="form-row">
+          <label><input id="soundToggle" type="checkbox" /> Enable click sound</label>
+          <small style="color: var(--muted)">Soft click on keypad/chip taps.</small>
+        </div>
         <div class="actions">
           <button class="btn primary" id="saveSettings">Save Settings</button>
           <button class="btn" id="resetSettings">Reset Defaults</button>
@@ -245,28 +266,22 @@ const UI_HTML = `<!doctype html>
     </div>
   </div>
 
-  <!-- Bottom watermark -->
-  <a class="watermark" href="https://github.com/Narsing-s" target="_blank" rel="noopener" aria-label="Created by Narsing-s">#CreatedByNarsing-s</a>
+  <!-- Clickable watermark -->
+  <a class="watermark" href="https://github.com/Narsing-s" target="_blank" rel="noopener">#CreatedByNarsing-s</a>
 
   <!-- Bottom nav -->
-  <nav class="bottom-nav" style="position:fixed; left:0; right:0; bottom:0; height:var(--nav-h); background:rgba(10,14,30,.85); border-top:1px solid rgba(255,255,255,.08); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:space-around">
-    <a href="#" data-screen="table" class="nav-item" style="text-decoration:none; color:var(--text)">
-      <div style="text-align:center">
-        <div style="font-size:20px">🧮</div>
-        <div style="font-size:12px">Table</div>
-      </div>
+  <nav class="bottom-nav">
+    <a href="#table" class="nav-item active" data-screen="table" aria-label="Table">
+      <div class="nav-ico">🧮</div>
+      <div class="nav-label">Table</div>
     </a>
-    <a href="#" data-screen="history" class="nav-item" style="text-decoration:none; color:var(--muted)">
-      <div style="text-align:center">
-        <div style="font-size:20px">🕘</div>
-        <div style="font-size:12px">History</div>
-      </div>
+    <a href="#history" class="nav-item" data-screen="history" aria-label="History">
+      <div class="nav-ico">🕘</div>
+      <div class="nav-label">History</div>
     </a>
-    <a href="#" data-screen="settings" class="nav-item" style="text-decoration:none; color:var(--muted)">
-      <div style="text-align:center">
-        <div style="font-size:20px">⚙️</div>
-        <div style="font-size:12px">Settings</div>
-      </div>
+    <a href="#settings" class="nav-item" data-screen="settings" aria-label="Settings">
+      <div class="nav-ico">⚙️</div>
+      <div class="nav-label">Settings</div>
     </a>
   </nav>
 
@@ -274,7 +289,9 @@ const UI_HTML = `<!doctype html>
     const $ = (id) => document.getElementById(id);
     $("year").textContent = new Date().getFullYear();
 
-    /* Theme */
+    /* =========================
+       Theme
+    ========================== */
     const THEME_KEY = "maths-ui-theme";
     const savedTheme = localStorage.getItem(THEME_KEY);
     if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
@@ -285,10 +302,14 @@ const UI_HTML = `<!doctype html>
       localStorage.setItem(THEME_KEY, mode);
     });
 
-    /* Settings */
+    /* =========================
+       Settings
+    ========================== */
     const BASE_KEY = "maths-ui-base";
     const MULE_KEY = "maths-ui-mule";
     const HIST_KEY = "maths-ui-history";
+    const HAPTICS_KEY = "maths-ui-haptics";
+    const SOUND_KEY   = "maths-ui-sound";
 
     function normBase(b){ b=(b||"").trim().replace(/\\s+/g,""); b=b.replace(/\\/+$/,""); return b || "/api"; }
 
@@ -296,10 +317,11 @@ const UI_HTML = `<!doctype html>
     $("baseVal").textContent = base;
     $("baseInput").value = base;
 
-    // The visible Mule URL in settings is just for your reference; server uses env var.
+    // Display Mule URL for reference; server uses env var for actual proxy target
     $("muleInput").value = "${MULE_TABLE_URL}";
 
     $("saveSettings").onclick = () => {
+      feedback();
       base = normBase($("baseInput").value);
       localStorage.setItem(BASE_KEY, base);
       $("baseVal").textContent = base;
@@ -307,6 +329,7 @@ const UI_HTML = `<!doctype html>
       buildRequest();
     };
     $("resetSettings").onclick = () => {
+      feedback();
       base = "/api";
       localStorage.setItem(BASE_KEY, base);
       $("baseInput").value = base;
@@ -315,241 +338,88 @@ const UI_HTML = `<!doctype html>
       buildRequest();
     };
 
-    /* Screen Navigation */
+    /* =========================
+       Haptics & Click Sound
+    ========================== */
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+    let hapticsOn = localStorage.getItem(HAPTICS_KEY);
+    hapticsOn = hapticsOn === null ? true : (hapticsOn === "true");
+
+    let soundOn = localStorage.getItem(SOUND_KEY);
+    soundOn = soundOn === null ? false : (soundOn === "true");
+
+    function vib(ms = 12) {
+      if (prefersReducedMotion) return;
+      try { navigator.vibrate?.(ms); } catch {}
+    }
+
+    let audioCtx;
+    function clickSound() {
+      if (!soundOn) return;
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = "square";
+        o.frequency.value = 220;
+        g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.08, audioCtx.currentTime + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.06);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime + 0.07);
+      } catch {}
+    }
+
+    function feedback(short = true) {
+      if (hapticsOn && !prefersReducedMotion) vib(short ? 12 : 24);
+      if (soundOn) clickSound();
+    }
+
+    function initFeedbackSettingsUI() {
+      const hapticsEl = $("hapticsToggle");
+      const soundEl   = $("soundToggle");
+      if (!hapticsEl || !soundEl) return;
+      hapticsEl.checked = hapticsOn && !prefersReducedMotion;
+      soundEl.checked   = soundOn;
+
+      hapticsEl.addEventListener("change", () => {
+        hapticsOn = hapticsEl.checked && !prefersReducedMotion;
+        localStorage.setItem(HAPTICS_KEY, String(hapticsOn));
+        if (hapticsOn) vib(10);
+      });
+      soundEl.addEventListener("change", () => {
+        soundOn = soundEl.checked;
+        localStorage.setItem(SOUND_KEY, String(soundOn));
+        if (soundOn) clickSound();
+      });
+    }
+
+    /* =========================
+       Navigation
+    ========================== */
     function setScreen(name){
       ["table","history","settings"].forEach(s => {
         $("screen-"+s)?.classList.toggle("active", s === name);
       });
       document.querySelectorAll(".nav-item").forEach(a => {
-        const s = a.getAttribute("data-screen") || a.href.split("#").pop();
-        a.style.color = (s===name) ? "var(--text)" : "var(--muted)";
+        const scr = a.getAttribute("data-screen");
+        a.classList.toggle("active", scr === name);
       });
       if (name === "history") renderHistory();
     }
     document.querySelectorAll(".nav-item").forEach(a => a.addEventListener("click", e => {
       e.preventDefault();
+      feedback();
       setScreen(a.getAttribute("data-screen"));
     }));
 
-    /* Field focus */
+    /* =========================
+       Field focus
+    ========================== */
     let active = "num";
     function setActive(id){
       active = id;
       ["num","str","end"].forEach(f => $("f-"+f).classList.toggle("active", f===id));
     }
-    $("f-num").addEventListener("click", ()=>setActive("num"));
-    $("f-str").addEventListener("click", ()=>setActive("str"));
-    $("f-end").addEventListener("click", ()=>setActive("end"));
-
-    /* Range chips */
-    document.querySelectorAll("#chipRange .chip").forEach(c => c.addEventListener("click", () => {
-      document.querySelectorAll("#chipRange .chip").forEach(e => e.classList.remove("active"));
-      c.classList.add("active");
-      $("str").textContent = c.getAttribute("data-str");
-      $("end").textContent = c.getAttribute("data-end");
-      buildRequest();
-    }));
-
-    /* Keypad */
-    $("pad").addEventListener("click", (e)=>{
-      const key = e.target.closest(".key");
-      if (!key) return;
-      const act = key.getAttribute("data-act");
-      const label = key.textContent.trim();
-      if (act === "back") backspace();
-      else if (act === "clear") clearActive();
-      else if (act === "compute") compute();
-      else if (/^[0-9.]$/.test(label)) append(label);
-    });
-
-    function getVal(id){ return $(id).textContent.trim(); }
-    function setVal(id,v){ $(id).textContent = v; }
-
-    function append(ch){
-      const cur = getVal(active);
-      if (active !== "num" && ch === "." ) return; // str/end are integers
-      if (ch === "." && cur.includes(".")) return;
-      setVal(active, cur + ch);
-      buildRequest();
-    }
-    function backspace(){
-      const cur = getVal(active);
-      setVal(active, cur.slice(0,-1));
-      buildRequest();
-    }
-    function clearActive(){
-      setVal(active, "");
-      buildRequest();
-    }
-
-    $("clearBtn").onclick = () => {
-      setVal("num","");
-      setVal("str","");
-      setVal("end","");
-      buildRequest();
-    };
-
-    /* Build request JSON preview */
-    function buildRequest(){
-      const body = { num: getVal("num"), str: getVal("str"), end: getVal("end") };
-      const pretty = JSON.stringify(body, null, 2);
-      $("reqJson").textContent = pretty;
-      return body;
-    }
-    // default range 1–50
-    if (!$("str").textContent && !$("end").textContent){
-      $("str").textContent = "1";
-      $("end").textContent = "50";
-    }
-    buildRequest();
-
-    /* Compute */
-    $("computeBtn").onclick = compute;
-
-    async function compute(){
-      try{
-        const body = buildRequest();
-
-        // validate client-side
-        const N = Number(body.num), S = Number(body.str), E = Number(body.end);
-        if ([body.num, body.str, body.end].some(v => v==="" || v==null)) {
-          return showError("Please fill Number, Start and End.");
-        }
-        if ([N,S,E].some(v => Number.isNaN(v) || !Number.isFinite(v))){
-          return showError("num, str, end must be valid numbers.");
-        }
-        if (!Number.isInteger(S) || !Number.isInteger(E)) {
-          return showError("str and end should be integers.");
-        }
-        if (S > E) {
-          return showError("Start must be <= End.");
-        }
-
-        const res = await fetch(base + "/table", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
-          body: JSON.stringify({ num: N, str: S, end: E })
-        });
-        const text = await res.text();
-
-        let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
-
-        if (!res.ok) {
-          const msg = (data && (data.message || data.error || data.details)) || \`HTTP \${res.status}\`;
-          return showError(msg);
-        }
-
-        // data is expected to be an array of strings like ["4 x 1 = 4", ...]
-        showResult(data);
-        pushHistory({ ts: new Date().toLocaleString(), num: N, str: S, end: E, result: data });
-
-      } catch (e) {
-        showError(e.message || "Unexpected error");
-      }
-    }
-
-    /* Render result + actions */
-    function showResult(data){
-      const box = $("resultBox");
-      box.className = "result-box";
-      if (Array.isArray(data)) {
-        box.textContent = data.join("\\n");
-        $("copyBtn").onclick = () => copyText(data.join("\\n"));
-        $("dlJsonBtn").onclick = () => downloadFile("table.json", JSON.stringify(data, null, 2), "application/json");
-        $("dlTxtBtn").onclick = () => downloadFile("table.txt", data.join("\\n"), "text/plain");
-      } else {
-        box.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-      }
-    }
-    function showError(msg){
-      const box = $("resultBox");
-      box.className = "result-box error";
-      box.textContent = msg;
-    }
-    function copyText(t){
-      navigator.clipboard?.writeText(t).then(()=>alert("Copied!")).catch(()=>alert("Copy failed."));
-    }
-    function downloadFile(name, content, type){
-      const blob = new Blob([content], { type }); const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
-    }
-
-    /* History */
-    function pushHistory(item){
-      try {
-        const arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
-        arr.unshift(item);
-        localStorage.setItem(HIST_KEY, JSON.stringify(arr.slice(0,50)));
-      } catch {}
-    }
-    function renderHistory(){
-      const list = $("historyList"), empty = $("historyEmpty");
-      list.innerHTML = "";
-      let arr = [];
-      try { arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch {}
-      if (!arr.length){ empty.style.display="block"; return; }
-      empty.style.display = "none";
-      arr.forEach((h, idx)=>{
-        const row = document.createElement("div");
-        row.className = "history-item";
-        row.innerHTML = \`
-          <div>\${h.ts} • num=\${h.num}, str=\${h.str}, end=\${h.end}</div>
-          <div>
-            <button data-act="rerun" data-idx="\${idx}">Re-run</button>
-          </div>\`;
-        row.querySelector("[data-act='rerun']").onclick = ()=>{
-          setVal("num", String(h.num)); setVal("str", String(h.str)); setVal("end", String(h.end));
-          setScreen("table"); buildRequest(); compute();
-        };
-        list.appendChild(row);
-      });
-    }
-
-    // Default to TABLE screen
-    setScreen("table");
-  </script>
-</body>
-</html>`;
-
-/* ---------- Serve UI ---------- */
-app.get("/", (_req, res) => res.type("html").send(UI_HTML));
-app.get("/ui", (_req, res) => res.type("html").send(UI_HTML));
-
-/* ---------- Proxy to Mule: POST /api/table ---------- */
-async function safeParse(resp) {
-  const text = await resp.text();
-  try { return { ok: true, data: JSON.parse(text), raw: text }; }
-  catch { return { ok: false, data: null, raw: text }; }
-}
-
-app.post("/api/table", async (req, res) => {
-  try {
-    const { num, str, end } = req.body || {};
-    if (num === undefined || str === undefined || end === undefined) {
-      return res.status(400).json({ error: "Body must include num, str, end" });
-    }
-
-    // Forward to Mule
-    const upstream = await fetch(MULE_TABLE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ num, str, end })
-    });
-    const parsed = await safeParse(upstream);
-
-    if (!upstream.ok) {
-      return res.status(upstream.status).json(parsed.ok ? parsed.data : { rawResponse: parsed.raw });
-    }
-    return res.json(parsed.ok ? parsed.data : { raw: parsed.raw });
-  } catch (e) {
-    res.status(500).json({ error: "Proxy error", details: e.message });
-  }
-});
-
-/* ---------- Catch-all to UI (non-API) ---------- */
-app.get(/^\/(?!api|health).*$/, (_req, res) => res.type("html").send(UI_HTML));
-
-/* ---------- 404 (should rarely hit) ---------- */
-app.use((req, res) => res.status(404).json({ error: "Not Found", path: req.path }));
-
-app.listen(PORT, () => console.log("Maths UI running on port " + PORT));
+    $("f-num").addEventListener("click", ()=>{ feedback(); setActive("num"); });
