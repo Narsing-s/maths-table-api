@@ -1,3 +1,4 @@
+```javascript
 // server.js
 const express = require("express");
 
@@ -6,7 +7,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Mule endpoint for tables
 const MULE_TABLE_URL =
   process.env.MULE_TABLE_URL ||
   "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
@@ -32,8 +32,10 @@ const UI_HTML = `<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8"/>
-<title>Maths Table</title>
+<title>Maths Table App</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 
@@ -42,38 +44,27 @@ const UI_HTML = `<!doctype html>
 --bg2:#0e1530;
 --card:#121a2f;
 --text:#eef3ff;
---muted:#9aa7cc;
 --accent:#4ae387;
 --accent2:#5aa1ff;
---danger:#ff7a7a;
---shadow:0 20px 40px rgba(0,0,0,.45);
 --radius:16px;
 }
 
-/* Better Light Theme */
 [data-theme="light"]{
 --bg:#f3f6ff;
 --bg2:#ffffff;
 --card:#ffffff;
 --text:#10163a;
---muted:#5a648a;
 --accent:#2563eb;
 --accent2:#7c3aed;
---danger:#dc2626;
---shadow:0 12px 30px rgba(0,0,0,.08);
 }
 
-/* Neon Theme */
 [data-theme="neon"]{
 --bg:#020617;
 --bg2:#020617;
 --card:#050a20;
 --text:#00f7ff;
---muted:#6ee7ff;
 --accent:#00f7ff;
 --accent2:#ff00ff;
---danger:#ff3b3b;
---shadow:0 0 30px rgba(0,255,255,.25);
 }
 
 body{
@@ -84,31 +75,22 @@ font-family:system-ui;
 padding:20px;
 }
 
-/* animated cards */
 .card{
 background:var(--card);
 padding:20px;
 border-radius:var(--radius);
-box-shadow:var(--shadow);
-transition:.25s;
-}
-
-.card:hover{
-transform:translateY(-4px);
+max-width:550px;
+margin:auto;
+box-shadow:0 20px 40px rgba(0,0,0,.45);
 }
 
 .btn{
 padding:10px 16px;
-border-radius:12px;
 border:none;
-cursor:pointer;
+border-radius:12px;
 background:linear-gradient(135deg,var(--accent),var(--accent2));
-color:#061127;
-transition:.2s;
-}
-
-.btn:hover{
-transform:translateY(-2px);
+cursor:pointer;
+margin-right:6px;
 }
 
 .keypad{
@@ -120,31 +102,29 @@ margin-top:20px;
 
 .key{
 background:rgba(255,255,255,.1);
-padding:16px;
-border-radius:12px;
+padding:18px;
+border-radius:50%;
 text-align:center;
-cursor:pointer;
 font-weight:bold;
-transition:.1s;
+cursor:pointer;
+transition:.15s;
 }
 
 .key:active{
-transform:scale(.92);
+transform:scale(.9);
 }
 
-.result-box{
+.result{
 margin-top:20px;
+white-space:pre-wrap;
+font-family:monospace;
+background:rgba(255,255,255,.05);
 padding:12px;
 border-radius:12px;
-background:rgba(255,255,255,.05);
-font-family:monospace;
-white-space:pre-wrap;
-animation:fade .3s;
 }
 
-@keyframes fade{
-from{opacity:0;transform:scale(.98)}
-to{opacity:1;transform:scale(1)}
+.tab{
+margin-top:10px;
 }
 
 </style>
@@ -156,38 +136,32 @@ to{opacity:1;transform:scale(1)}
 
 <h2>Maths Table</h2>
 
-<div>
-Number:
-<div id="num"></div>
-Start:
-<div id="str">1</div>
-End:
-<div id="end"></div>
-</div>
+<div>Number: <span id="num"></span></div>
+<div>Start: <span id="str">1</span></div>
+<div>End: <span id="end"></span></div>
 
-<div style="margin-top:10px">
+<div class="tab">
 <button class="btn" id="computeBtn">Compute</button>
 <button class="btn" id="clearBtn">Clear</button>
 <button class="btn" id="themeBtn">Theme</button>
+<button class="btn" id="graphBtn">Graph</button>
+<button class="btn" id="quizBtn">Quiz</button>
 </div>
 
-<div class="result-box" id="resultBox">
-Result will appear here
-</div>
+<div class="result" id="resultBox">Result will appear here</div>
+
+<canvas id="chart" style="margin-top:20px"></canvas>
 
 <div class="keypad" id="pad">
 <div class="key">7</div>
 <div class="key">8</div>
 <div class="key">9</div>
-
 <div class="key">4</div>
 <div class="key">5</div>
 <div class="key">6</div>
-
 <div class="key">1</div>
 <div class="key">2</div>
 <div class="key">3</div>
-
 <div class="key">0</div>
 <div class="key">.</div>
 <div class="key">-</div>
@@ -197,29 +171,24 @@ Result will appear here
 
 <script>
 
+var $ = id => document.getElementById(id);
 var active="num";
 
-var $=id=>document.getElementById(id);
-
-/* tap sound */
+/* Tap sound */
 var audioCtx;
 
 function clickSound(){
 try{
-audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
-var o=audioCtx.createOscillator();
-var g=audioCtx.createGain();
-
+audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+var o = audioCtx.createOscillator();
+var g = audioCtx.createGain();
 o.type="triangle";
 o.frequency.value=300;
-
 g.gain.setValueAtTime(.0001,audioCtx.currentTime);
 g.gain.exponentialRampToValueAtTime(.15,audioCtx.currentTime+.01);
 g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.08);
-
 o.connect(g);
 g.connect(audioCtx.destination);
-
 o.start();
 o.stop(audioCtx.currentTime+.08);
 }catch(e){}
@@ -229,11 +198,8 @@ o.stop(audioCtx.currentTime+.08);
 $("pad").onclick=e=>{
 var k=e.target.closest(".key");
 if(!k)return;
-
 clickSound();
-
 var v=k.textContent;
-
 var cur=$(active).textContent;
 $(active).textContent=cur+v;
 }
@@ -257,9 +223,49 @@ var data=await res.json();
 
 if(Array.isArray(data)){
 $("resultBox").textContent=data.join("\\n").replaceAll(" x "," × ");
+window.currentTable=data;
 }else{
 $("resultBox").textContent=JSON.stringify(data,null,2);
 }
+
+}
+
+/* graph */
+$("graphBtn").onclick=()=>{
+
+if(!window.currentTable)return;
+
+var nums=[];
+var vals=[];
+
+window.currentTable.forEach(line=>{
+var parts=line.split("=");
+vals.push(Number(parts[1]));
+nums.push(nums.length+1);
+});
+
+new Chart(document.getElementById("chart"),{
+type:"line",
+data:{
+labels:nums,
+datasets:[{label:"Table",data:vals}]
+}
+});
+
+}
+
+/* quiz */
+$("quizBtn").onclick=()=>{
+
+var n=Number($("num").textContent);
+var r=Math.floor(Math.random()*10)+1;
+
+var ans=prompt(n+" × "+r+" = ?");
+
+if(Number(ans)===n*r)
+alert("Correct!");
+else
+alert("Wrong. Answer: "+(n*r));
 
 }
 
@@ -272,7 +278,7 @@ $("end").textContent="";
 $("resultBox").textContent="Result will appear here";
 }
 
-/* theme cycle */
+/* theme */
 var themes=["dark","light","neon"];
 var index=0;
 
@@ -300,7 +306,6 @@ async function safeParse(resp) {
 
 app.post("/api/table", async (req, res) => {
   try {
-
     const { num, str, end } = req.body || {};
 
     if (num === undefined || str === undefined || end === undefined) {
@@ -319,14 +324,15 @@ app.post("/api/table", async (req, res) => {
       return res.status(upstream.status).json(parsed.ok ? parsed.data : { rawResponse: parsed.raw });
     }
 
-    res.json(parsed.ok ? parsed.data : { raw: parsed.raw });
+    return res.json(parsed.ok ? parsed.data : { raw: parsed.raw });
 
   } catch (e) {
     res.status(500).json({ error: "Proxy error", details: e.message });
   }
 });
 
-/* ---------- 404 ---------- */
-app.use((req, res) => res.status(404).json({ error: "Not Found", path: req.path }));
+/* ---------- Catch-all ---------- */
+app.get(/^\\/(?!api|health).*$/, (_req, res) => res.type("html").send(UI_HTML));
 
 app.listen(PORT, () => console.log("Maths UI running on port " + PORT));
+```
