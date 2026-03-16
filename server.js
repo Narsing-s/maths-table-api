@@ -11,29 +11,27 @@ const MULE_TABLE_URL =
   process.env.MULE_TABLE_URL ||
   "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
 
-/* ---------- Diagnostics ---------- */
+/* ---------- Logs ---------- */
 app.use((req, res, next) => {
-  res.setHeader("X-App", "Maths-UI");
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log(req.method, req.url);
   next();
 });
 
 /* ---------- Health ---------- */
-app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    node: process.version,
-    muleTableUrl: MULE_TABLE_URL
-  });
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
-/* ---------- Inline UI ---------- */
-const UI_HTML = `<!doctype html>
+/* ---------- UI ---------- */
+
+const UI_HTML = `
+<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-<meta charset="utf-8"/>
+
+<meta charset="UTF-8">
 <title>Maths Table App</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -41,26 +39,22 @@ const UI_HTML = `<!doctype html>
 
 :root{
 --bg:#0b1020;
---bg2:#0e1530;
 --card:#121a2f;
---text:#eef3ff;
+--text:#fff;
 --accent:#4ae387;
 --accent2:#5aa1ff;
---radius:16px;
 }
 
 [data-theme="light"]{
 --bg:#f3f6ff;
---bg2:#ffffff;
 --card:#ffffff;
---text:#10163a;
+--text:#111;
 --accent:#2563eb;
 --accent2:#7c3aed;
 }
 
 [data-theme="neon"]{
 --bg:#020617;
---bg2:#020617;
 --card:#050a20;
 --text:#00f7ff;
 --accent:#00f7ff;
@@ -68,29 +62,28 @@ const UI_HTML = `<!doctype html>
 }
 
 body{
-margin:0;
-background:linear-gradient(180deg,var(--bg),var(--bg2));
+background:var(--bg);
 color:var(--text);
 font-family:system-ui;
 padding:20px;
+margin:0;
 }
 
 .card{
 background:var(--card);
 padding:20px;
-border-radius:var(--radius);
+border-radius:16px;
 max-width:550px;
 margin:auto;
-box-shadow:0 20px 40px rgba(0,0,0,.45);
 }
 
 .btn{
 padding:10px 16px;
 border:none;
 border-radius:12px;
-background:linear-gradient(135deg,var(--accent),var(--accent2));
 cursor:pointer;
-margin-right:6px;
+background:linear-gradient(135deg,var(--accent),var(--accent2));
+margin:4px;
 }
 
 .keypad{
@@ -102,16 +95,11 @@ margin-top:20px;
 
 .key{
 background:rgba(255,255,255,.1);
-padding:18px;
-border-radius:50%;
+padding:20px;
+border-radius:12px;
 text-align:center;
-font-weight:bold;
+font-size:20px;
 cursor:pointer;
-transition:.15s;
-}
-
-.key:active{
-transform:scale(.9);
 }
 
 .result{
@@ -120,11 +108,7 @@ white-space:pre-wrap;
 font-family:monospace;
 background:rgba(255,255,255,.05);
 padding:12px;
-border-radius:12px;
-}
-
-.tab{
-margin-top:10px;
+border-radius:10px;
 }
 
 </style>
@@ -134,98 +118,118 @@ margin-top:10px;
 
 <div class="card">
 
-<h2>Maths Table</h2>
+<h2>Multiplication Table</h2>
 
 <div>Number: <span id="num"></span></div>
 <div>Start: <span id="str">1</span></div>
-<div>End: <span id="end"></span></div>
+<div>End: <span id="end">10</span></div>
 
-<div class="tab">
+<div>
+
+<button class="btn" id="setNum">Set Number</button>
+<button class="btn" id="setStr">Set Start</button>
+<button class="btn" id="setEnd">Set End</button>
+
+</div>
+
+<div>
+
 <button class="btn" id="computeBtn">Compute</button>
-<button class="btn" id="clearBtn">Clear</button>
-<button class="btn" id="themeBtn">Theme</button>
 <button class="btn" id="graphBtn">Graph</button>
 <button class="btn" id="quizBtn">Quiz</button>
+<button class="btn" id="downloadBtn">Download</button>
+<button class="btn" id="themeBtn">Theme</button>
+<button class="btn" id="clearBtn">Clear</button>
+
 </div>
 
 <div class="result" id="resultBox">Result will appear here</div>
 
-<canvas id="chart" style="margin-top:20px"></canvas>
+<canvas id="chart"></canvas>
 
 <div class="keypad" id="pad">
+
 <div class="key">7</div>
 <div class="key">8</div>
 <div class="key">9</div>
+
 <div class="key">4</div>
 <div class="key">5</div>
 <div class="key">6</div>
+
 <div class="key">1</div>
 <div class="key">2</div>
 <div class="key">3</div>
+
 <div class="key">0</div>
 <div class="key">.</div>
 <div class="key">-</div>
+
 </div>
 
 </div>
 
 <script>
 
-var $ = id => document.getElementById(id);
-var active="num";
+const $=id=>document.getElementById(id)
 
-/* Tap sound */
-var audioCtx;
+let active="num"
+let currentTable=[]
 
-function clickSound(){
+/* Tap Sound */
+let audioCtx
+function tap(){
 try{
-audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-var o = audioCtx.createOscillator();
-var g = audioCtx.createGain();
-o.type="triangle";
-o.frequency.value=300;
-g.gain.setValueAtTime(.0001,audioCtx.currentTime);
-g.gain.exponentialRampToValueAtTime(.15,audioCtx.currentTime+.01);
-g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.08);
-o.connect(g);
-g.connect(audioCtx.destination);
-o.start();
-o.stop(audioCtx.currentTime+.08);
+audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)()
+const o=audioCtx.createOscillator()
+const g=audioCtx.createGain()
+o.frequency.value=300
+g.gain.setValueAtTime(.001,audioCtx.currentTime)
+g.gain.exponentialRampToValueAtTime(.2,audioCtx.currentTime+.01)
+g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.08)
+o.connect(g)
+g.connect(audioCtx.destination)
+o.start()
+o.stop(audioCtx.currentTime+.08)
 }catch(e){}
 }
 
+/* choose input */
+$("setNum").onclick=()=>active="num"
+$("setStr").onclick=()=>active="str"
+$("setEnd").onclick=()=>active="end"
+
 /* keypad */
 $("pad").onclick=e=>{
-var k=e.target.closest(".key");
-if(!k)return;
-clickSound();
-var v=k.textContent;
-var cur=$(active).textContent;
-$(active).textContent=cur+v;
+const k=e.target.closest(".key")
+if(!k)return
+tap()
+$(active).textContent += k.textContent
 }
 
 /* compute */
 $("computeBtn").onclick=async()=>{
 
-clickSound();
+tap()
 
-var num=Number($("num").textContent);
-var str=Number($("str").textContent);
-var end=Number($("end").textContent);
+const num=Number($("num").textContent)
+const str=Number($("str").textContent)
+const end=Number($("end").textContent)
 
-var res=await fetch("/api/table",{
+const res=await fetch("/api/table",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({num,str,end})
-});
+})
 
-var data=await res.json();
+const data=await res.json()
 
 if(Array.isArray(data)){
-$("resultBox").textContent=data.join("\\n").replaceAll(" x "," × ");
-window.currentTable=data;
+currentTable=data
+$("resultBox").textContent=data.join("\\n").replaceAll(" x "," × ")
+localStorage.setItem("lastTable",JSON.stringify(data))
 }else{
-$("resultBox").textContent=JSON.stringify(data,null,2);
+$("resultBox").textContent=JSON.stringify(data,null,2)
 }
 
 }
@@ -233,106 +237,118 @@ $("resultBox").textContent=JSON.stringify(data,null,2);
 /* graph */
 $("graphBtn").onclick=()=>{
 
-if(!window.currentTable)return;
+if(!currentTable.length)return
 
-var nums=[];
-var vals=[];
+const labels=[]
+const vals=[]
 
-window.currentTable.forEach(line=>{
-var parts=line.split("=");
-vals.push(Number(parts[1]));
-nums.push(nums.length+1);
-});
+currentTable.forEach((l,i)=>{
+const v=l.split("=")[1]
+labels.push(i+1)
+vals.push(Number(v))
+})
 
-new Chart(document.getElementById("chart"),{
+new Chart($("chart"),{
 type:"line",
 data:{
-labels:nums,
+labels:labels,
 datasets:[{label:"Table",data:vals}]
 }
-});
+})
 
 }
 
 /* quiz */
 $("quizBtn").onclick=()=>{
-
-var n=Number($("num").textContent);
-var r=Math.floor(Math.random()*10)+1;
-
-var ans=prompt(n+" × "+r+" = ?");
-
+const n=Number($("num").textContent)
+const r=Math.floor(Math.random()*10)+1
+const ans=prompt(n+" × "+r+" = ?")
 if(Number(ans)===n*r)
-alert("Correct!");
+alert("Correct")
 else
-alert("Wrong. Answer: "+(n*r));
+alert("Wrong. Answer: "+(n*r))
+}
 
+/* download */
+$("downloadBtn").onclick=()=>{
+if(!currentTable.length)return
+const blob=new Blob([currentTable.join("\\n")])
+const a=document.createElement("a")
+a.href=URL.createObjectURL(blob)
+a.download="table.txt"
+a.click()
 }
 
 /* clear */
 $("clearBtn").onclick=()=>{
-clickSound();
-$("num").textContent="";
-$("str").textContent="1";
-$("end").textContent="";
-$("resultBox").textContent="Result will appear here";
+tap()
+$("num").textContent=""
+$("str").textContent="1"
+$("end").textContent="10"
+$("resultBox").textContent="Result will appear here"
+currentTable=[]
 }
 
 /* theme */
-var themes=["dark","light","neon"];
-var index=0;
+const themes=["dark","light","neon"]
+let t=0
 
 $("themeBtn").onclick=()=>{
-clickSound();
-index=(index+1)%themes.length;
-document.documentElement.setAttribute("data-theme",themes[index]);
+tap()
+t=(t+1)%themes.length
+document.documentElement.setAttribute("data-theme",themes[t])
 }
 
 </script>
 
 </body>
-</html>`;
+</html>
+`
 
 /* ---------- Serve UI ---------- */
-app.get("/", (_req, res) => res.type("html").send(UI_HTML));
-app.get("/ui", (_req, res) => res.type("html").send(UI_HTML));
 
-/* ---------- Proxy to Mule ---------- */
-async function safeParse(resp) {
-  const text = await resp.text();
-  try { return { ok: true, data: JSON.parse(text), raw: text }; }
-  catch { return { ok: false, data: null, raw: text }; }
+app.get("/", (req, res) => res.type("html").send(UI_HTML))
+
+/* ---------- Mule Proxy ---------- */
+
+async function safeParse(resp){
+const text=await resp.text()
+try{
+return JSON.parse(text)
+}catch{
+return {raw:text}
+}
 }
 
-app.post("/api/table", async (req, res) => {
-  try {
-    const { num, str, end } = req.body || {};
+app.post("/api/table", async (req,res)=>{
 
-    if (num === undefined || str === undefined || end === undefined) {
-      return res.status(400).json({ error: "Body must include num, str, end" });
-    }
+try{
 
-    const upstream = await fetch(MULE_TABLE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ num, str, end })
-    });
+const {num,str,end}=req.body
 
-    const parsed = await safeParse(upstream);
+const r=await fetch(MULE_TABLE_URL,{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({num,str,end})
+})
 
-    if (!upstream.ok) {
-      return res.status(upstream.status).json(parsed.ok ? parsed.data : { rawResponse: parsed.raw });
-    }
+const data=await safeParse(r)
 
-    return res.json(parsed.ok ? parsed.data : { raw: parsed.raw });
+res.json(data)
 
-  } catch (e) {
-    res.status(500).json({ error: "Proxy error", details: e.message });
-  }
-});
+}catch(e){
 
-/* ---------- Catch-all ---------- */
-app.get(/^\\/(?!api|health).*$/, (_req, res) => res.type("html").send(UI_HTML));
+res.status(500).json({error:e.message})
 
-app.listen(PORT, () => console.log("Maths UI running on port " + PORT));
+}
+
+})
+
+/* ---------- Start Server ---------- */
+
+app.listen(PORT,()=>{
+
+console.log("Server running on port",PORT)
+
+})
 ```
