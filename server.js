@@ -1,4 +1,3 @@
-```javascript
 const express = require("express");
 const path = require("path");
 
@@ -7,50 +6,52 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
+/* MuleSoft API URL */
 const MULE_TABLE_URL =
 process.env.MULE_TABLE_URL ||
 "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
 
-/* Serve UI */
+/* Serve the UI from /public folder */
+app.use(express.static(path.join(__dirname, "public")));
 
-app.use(express.static(path.join(__dirname,"public")));
-
-/* Proxy API */
-
-async function safeParse(r){
-const text = await r.text();
-try{
+/* Safe JSON parse helper */
+async function safeParse(response) {
+const text = await response.text();
+try {
 return JSON.parse(text);
-}catch{
-return {raw:text};
+} catch {
+return { raw: text };
 }
 }
 
-app.post("/api/table", async (req,res)=>{
+/* API Proxy to MuleSoft */
+app.post("/api/table", async (req, res) => {
+try {
+const { num, str, end } = req.body;
 
-try{
-
-const {num,str,end} = req.body;
-
-const r = await fetch(MULE_TABLE_URL,{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({num,str,end})
+```
+const muleResponse = await fetch(MULE_TABLE_URL, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ num, str, end }),
 });
 
-const data = await safeParse(r);
+const data = await safeParse(muleResponse);
 
 res.json(data);
-
-}catch(e){
-
-res.status(500).json({error:e.message});
-
-}
-
-});
-
-app.listen(PORT, ()=>{
-console.log("Server running on port",PORT);
-});
 ```
+
+} catch (error) {
+res.status(500).json({
+error: "Server Error",
+message: error.message,
+});
+}
+});
+
+/* Start server */
+app.listen(PORT, () => {
+console.log(`Server running on port ${PORT}`);
+});
